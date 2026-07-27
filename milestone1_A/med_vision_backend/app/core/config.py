@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     def ASYNC_DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
+    @property
+    def DATABASE_URL(self) -> str:
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+    
+    @property
+    def database_url(self) -> str:
+        return self.DATABASE_URL
+
     # JWT Authentication Parameters
     SECRET_KEY: str = "CHANGE_THIS_TO_A_32_BYTE_SECRET_KEY_IN_PRODUCTION"
     ALGORITHM: str = "HS256"
@@ -33,6 +41,16 @@ class Settings(BaseSettings):
         if self.R2_ACCOUNT_ID and self.R2_ACCOUNT_ID != "local":
             return f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
         return self.S3_ENDPOINT_URL
+
+    # Person B Storage Aliases
+    @property
+    def s3_endpoint_url(self) -> str: return self.R2_ENDPOINT_URL
+    @property
+    def s3_access_key(self) -> str: return self.R2_ACCESS_KEY_ID
+    @property
+    def s3_secret_key(self) -> str: return self.R2_SECRET_ACCESS_KEY
+    @property
+    def s3_bucket_name(self) -> str: return self.R2_BUCKET_NAME
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 

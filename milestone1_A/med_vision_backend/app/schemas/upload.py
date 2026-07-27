@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
-from app.models.medical_record import ProcessingStatus
+from app.db.models import ProcessingStatus
 
 class MedicalRecordOut(BaseModel):
     id: uuid.UUID

@@ -1,16 +1,16 @@
+import io
 import uuid
+import json
 from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.core.database import get_db
-from app.models.medical_record import MedicalRecord, User, ProcessingStatus
+from app.db.session import get_db
+from app.db.models import MedicalRecord, User, ProcessingStatus
 from app.schemas.upload import MedicalRecordOut, MedicalRecordListOut
-from app.services.r2_service import r2_service
+from app.storage.client import storage_client
 
 router = APIRouter()
 
@@ -29,7 +29,6 @@ ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".dcm"}
 MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB Limit
 
 def get_file_extension(filename: str | None, mime_type: str) -> str | None:
-    """Resolves extension based on MIME type or filename."""
     if filename:
         lower_name = filename.lower()
         for ext in ALLOWED_EXTENSIONS:
@@ -38,12 +37,11 @@ def get_file_extension(filename: str | None, mime_type: str) -> str | None:
     return ALLOWED_MIME_TYPES.get(mime_type)
 
 @router.post("/", response_model=MedicalRecordOut, status_code=status.HTTP_201_CREATED)
-async def upload_medical_record(
+def upload_medical_record(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
-    # 1. Validation for MIME Type / File Extension
     extension = get_file_extension(file.filename, file.content_type)
     if not extension:
         raise HTTPException(
@@ -51,8 +49,7 @@ async def upload_medical_record(
             detail=f"Unsupported media type '{file.content_type}'. Allowed formats: PNG, JPEG, PDF, DICOM (.dcm)."
         )
 
-    # 2. File Size Validation & Content Reading
-    file_bytes = await file.read()
+    file_bytes = file.file.read()
     file_size = len(file_bytes)
 
     if file_size > MAX_FILE_SIZE_BYTES:
@@ -67,13 +64,11 @@ async def upload_medical_record(
             detail="File is empty."
         )
 
-    # 3. Object Storage Keys
     record_id = uuid.uuid4()
     r2_image_key = f"raw_images/{current_user.id}/{record_id}{extension}"
     r2_log_key = f"logs/{current_user.id}/{record_id}_audit.json"
 
-    # 4. Storage Upload (Binary stream & Audit JSON Log)
-    await r2_service.upload_bytes(file_bytes, r2_image_key, file.content_type or "application/octet-stream")
+    storage_client.upload_file(io.BytesIO(file_bytes), r2_image_key, content_type=file.content_type or "application/octet-stream")
 
     audit_log = {
         "record_id": str(record_id),
@@ -84,42 +79,39 @@ async def upload_medical_record(
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "status": "VALIDATED_AND_STORED"
     }
-    await r2_service.upload_json_log(audit_log, r2_log_key)
+    storage_client.upload_file(io.BytesIO(json.dumps(audit_log).encode("utf-8")), r2_log_key, content_type="application/json")
 
-    # 5. Database Metadata Persistence
     db_record = MedicalRecord(
         id=record_id,
         user_id=current_user.id,
         original_filename=file.filename or "unknown",
         mime_type=file.content_type or "application/octet-stream",
-        file_size_bytes=file_size,
+        file_size_bytes=str(file_size),
         r2_image_key=r2_image_key,
         r2_log_key=r2_log_key,
         status=ProcessingStatus.PENDING
     )
     db.add(db_record)
-    await db.commit()
-    await db.refresh(db_record)
+    db.commit()
+    db.refresh(db_record)
 
     return db_record
 
 @router.get("/", response_model=MedicalRecordListOut)
-async def list_medical_records(
+def list_medical_records(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
-    query = select(MedicalRecord).where(MedicalRecord.user_id == current_user.id).order_by(MedicalRecord.created_at.desc())
-    result = await db.execute(query)
-    records = result.scalars().all()
+    records = db.query(MedicalRecord).filter(MedicalRecord.user_id == current_user.id).order_by(MedicalRecord.created_at.desc()).all()
     return {"total": len(records), "items": records}
 
 @router.get("/{record_id}", response_model=MedicalRecordOut)
-async def get_medical_record(
+def get_medical_record(
     record_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db)
 ):
-    record = await db.get(MedicalRecord, record_id)
+    record = db.query(MedicalRecord).filter(MedicalRecord.id == record_id).first()
     if not record or record.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medical record not found.")
     return record
