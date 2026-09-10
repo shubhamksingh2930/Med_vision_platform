@@ -21,3 +21,4 @@ onnxruntime
 grad-cam
 Pillow
 bcrypt<4.1.0
+onnxscript

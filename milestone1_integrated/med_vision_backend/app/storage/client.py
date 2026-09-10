@@ -22,5 +22,7 @@ class StorageClient:
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=expires_in,
         )
+    def download_file(self, key: str, local_path: str):
+        self.client.download_file(self.bucket, key, local_path)
 
 storage_client = StorageClient()
