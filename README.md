@@ -1,70 +1,112 @@
-📌 Overview
-Milestone 3 successfully integrates the core machine learning components into our FastAPI/Celery backend. The objective was to deploy a medical imaging model (torchxrayvision DenseNet121) to classify 18 thoracic pathologies from chest X-rays, provide spatial explainability using GradCAM, and orchestrate the entire flow asynchronously using Celery, PostgreSQL, and MinIO (S3).
+MedVision — Explainable Medical Imaging AI
+Platform
+An end-to-end clinical decision support platform for chest X-ray pathology classification and
+interpretability. The system uses a fine-tuned DenseNet-121 model deployed via ONNX Runtime for
+high-performance inference, generates visual explanations using Grad-CAM with PyTorch, and provides
+an authenticated single-page clinical console built with React and Vite.
+Architecture Overview
+ Frontend: React (Vite), Axios, Server-Sent Events (SSE) EventSource.
+ API Layer: FastAPI, OAuth2 with JWT authentication, Pydantic v2 schemas, SSE streaming.
+ Worker &amp; Queue: Celery with Redis broker, solo pool orchestration.
+ ML &amp; Explainability Pipeline:
+ Inference: TorchXRayVision DenseNet-121 (densenet121-res224-all, 18 pathology classes)
+wrapped into a traceable ExportableDenseNet module and executed via onnxruntime.
+ Explainability: Secondary forward/backward pass on raw PyTorch layers using
+pytorch_grad_cam to generate Grad-CAM heatmaps.
+ Preprocessing: Strict [-1024, 1024] pixel normalization with TorchXRayVision center crop and
+resize (224x224).
+ Storage: S3-compatible object storage (MinIO) using Boto3 presigned URLs.
+ Database: PostgreSQL with SQLAlchemy ORM and Alembic migrations.
+Milestone 4: Frontend &amp; API Integration Breakdown
+Milestone 4 bridged the gap between the asynchronous worker pipeline and clinical end-users by
+constructing a full web interface and the necessary API endpoints:
 
-To optimize inference speed and decouple our production environment from heavy PyTorch training dependencies, the classification backbone was exported to ONNX, executed via onnxruntime, while PyTorch was retained exclusively for the gradient-based GradCAM generation.
+1. Authentication-Aware Data Flow: Gated access requiring JWT tokens for prediction creation,
+   event subscriptions, and history retrieval.
+2. Real-Time Job Tracking via SSE: Real-time status dispatching (pending → processing → completed
+   / failed) using Server-Sent Events (sse-starlette).
+3. Dual-Image Clinical Viewer: Side-by-side display of the original chest radiograph and the
+   generated Grad-CAM heatmap overlay.
+4. Sorted Pathology Probabilities: Dynamic parsing and sigmoid probability computation across all
+   18 clinical pathology classes.
+5. Paginated Historical Feed: User-scoped historical log allowing clinicians to inspect and reload past
+   predictions.
 
-🏗️ Architecture & Components Created
-preprocessing.py: Handles X-ray specific normalization (8-bit to [-1024, 1024] range), center cropping, and reshaping to 224x224.
+Complete Setup &amp; Execution Guide (PowerShell)
 
-inference.py: Loads the ONNX model and executes forward passes via CPUExecutionProvider.
+1. Branch Checkout &amp; API Scaffolding
 
-gradcam.py: Uses pytorch_grad_cam to hook into the final convolutional layer of the DenseNet backbone, generating a localized heatmap overlaid on the original image.
+# Checkout milestone-4 branch
 
-app/worker/tasks.py: The Celery orchestrator. It manages the full lifecycle: DB state updates -> MinIO download -> ONNX Inference -> PyTorch GradCAM -> MinIO heatmap upload -> DB result persistence.
+git checkout -b milestone-4
 
-🛑 Challenges Faced & Technical Solutions
-During the implementation and ONNX export process, we encountered several edge-cases related to tracing PyTorch models into static computation graphs. Here is a detailed breakdown of the problems and how they were resolved.
+# Create backend API directories and files
 
-1. get_model API Incompatibility
-   Problem: Attempting to load the model via xrv.models.get_model("densenet121-res224-all", from_hf_hub=True) resulted in a TypeError: DenseNet.**init**() got an unexpected keyword argument 'from_hf_hub'.
+New-Item -ItemType Directory -Force -Path app/api
+New-Item -ItemType File -Force -Path app/api/**init**.py, app/api/routes.py,
+app/api/schemas.py, app/main.py 2. Frontend Scaffolding
 
-Solution: Bypassed the wrapper function and instantiated the class directly using the exact weights keyword: xrv.models.DenseNet(weights="densenet121-res224-all").
+# Initialize Vite React template
 
-2. ONNX Exporter Dependency Missing
-   Problem: ModuleNotFoundError: No module named 'onnxscript'. PyTorch's newer Dynamo-based exporter requires this module for ONNX translation.
+npm create vite@latest frontend -- --template react
 
-Solution: Added onnxscript to the requirements.txt environment.
+# Move into directory, install core dependencies, and create component structure
 
-3. Data-Dependent Tracing Errors (GuardOnDataDependentSymNode)
-   Problem: During torch.onnx.export, the Dynamo tracer crashed with Could not guard on data-dependent expression Eq(u0, 1).
+Set-Location frontend
+npm install
+npm install axios
+New-Item -ItemType Directory -Force -Path src/components
+New-Item -ItemType File -Force -Path src/api.js, src/components/Auth.jsx,
+src/components/UploadDashboard.jsx, src/components/Viewer.jsx,
+src/components/PredictionHistory.jsx, src/App.jsx
+Set-Location .. 3. Running All System Services
+Run each command in a separate terminal:
+Terminal 1: FastAPI Backend (med_vision_backend)
+.\venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
+Terminal 2: Celery Worker (med_vision_backend)
+.\venv\Scripts\Activate.ps1
+celery -A app.worker.celery_app worker --loglevel=info --pool=solo
+Terminal 3: React Frontend (med_vision_backend/frontend)
+Set-Location frontend
+npm run dev
+Problems Encountered &amp; Resolutions
 
-Cause: The torchxrayvision library includes a warn_normalization(x) function in its forward pass. This function dynamically evaluates x.min() and x.max() at runtime to warn users if the image isn't normalized properly. Symbolic graph tracing cannot compile dynamic if statements based on tensor data values.
+1. Terminal Environment &amp; Shell Syntax
 
-Solution:
+ Problem: Standard Linux/Bash scaffolding commands (mkdir -p, touch) failed on Windows
+PowerShell.
+ Resolution: Replaced them with PowerShell commandlets: New-Item -ItemType Directory -Force
+and New-Item -ItemType File -Force. 2. Vite Scaffolding in Pre-Created Directory
+ Problem: Running npm run dev threw ENOENT: no such file or directory, open
+&#39;frontend/package.json&#39; because file creation occurred before Vite initialized the package root.
+ Resolution: Scaffolded Vite directly into the directory using npm create vite@latest . -- --template
+react, selected &#39;Ignore files and continue&#39;, and installed project dependencies cleanly via npm install
+and npm install axios. 3. Default Vite Landing Page Overriding Console
+ Problem: Navigating to http://localhost:5173 rendered the default Vite/React placeholder instead of
+the login interface.
+ Resolution: Cleared all boilerplate styling inside src/index.css and src/App.css, ensured src/App.jsx
+cleanly imported the authentication and dashboard components, and cleared stale tokens from
+localStorage. 4. Router Definition Crash on Backend Reload
+ Problem: Uvicorn crashed with NameError: name &#39;router&#39; is not defined during code updates.
+ Resolution: Restored the complete file structure in app/api/routes.py, ensuring APIRouter()
+initialization, database models, Boto3 storage client, and task imports preceded route decorator
+declarations. 5. SSE Authorization Header Limitations
+ Problem: Native browser EventSource APIs cannot send custom headers (such as Authorization:
+Bearer &lt;token&gt;), blocking authenticated live status tracking.
+ Resolution: Updated prediction_events in app/api/routes.py to accept the JWT as a query
+parameter (token: str = Query(...)), manually validating the payload and user_id subject claim inside
+the route. 6. Negative Percentage Outputs in UI
+ Problem: The UI rendered negative finding values (e.g., -18.8%, -92.5%).
+ Resolution: The ONNX DenseNet-121 model outputs raw logit scores rather than normalized
+probabilities. Implemented a sigmoid mathematical transformation in
+frontend/src/components/Viewer.jsx: σ(x) = 1 / (1 + e^(-x)). This normalized all outputs into valid
+probabilities [0, 1] before scaling by 100.
 
-Temporarily monkey-patched the library function during export: xrv.utils.warn_normalization = lambda x: None.
-
-Switched from the experimental Dynamo exporter (dynamo=True) to the legacy TorchScript tracing engine (dynamo=False) targeting Opset 18.
-
-4. ONNX Runtime Shape Inference Failure
-   Problem: At inference time, onnxruntime crashed with: Non-zero status code returned while running Reshape node... input_shape_size == requested_shape_size was false.
-
-Cause: The default DenseNet module in torchxrayvision executes custom features2() pooling and dynamic resolution fixing (fix_resolution). When exported to ONNX with dynamic_axes, these internal reshapes compiled into static sizes that broke when evaluating variable batch sizes.
-
-Solution: Created a custom wrapper class, ExportableDenseNet(nn.Module). We extracted the raw base_model.features and base_model.classifier, completely bypassing the custom library functions. We manually bridged them using static, ONNX-friendly operations: torch.nn.functional.adaptive_avg_pool2d and torch.flatten.
-
-5. API Namespace Errors (adaptive_avg_pool2d)
-   Problem: AttributeError: module 'torch' has no attribute 'adaptive_avg_pool2d'.
-
-Solution: Corrected the namespace call. The function lives in the functional API, requiring import torch.nn.functional as F and calling F.adaptive_avg_pool2d.
-
-6. Broken Upstream Test Data (HTTP 404)
-   Problem: The official torchxrayvision sample image URL was returning a 404 Not Found error, blocking pipeline verification.
-
-Solution: Used numpy and PIL to generate a synthetic grayscale test image directly in memory, ensuring our ML pipeline tests are fully decoupled from external network resources.
-
-7. Path Resolution in Standalone Scripts
-   Problem: Running scripts/test_m3_worker.py threw ModuleNotFoundError: No module named 'app'.
-
-Solution: Injected the project root into sys.path dynamically at the top of the test scripts using sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(**file**), ".."))).
-
-🚀 Verification
-The pipeline is fully verified end-to-end. Running python scripts/test_m3_worker.py successfully:
-
-Creates a synthetic user and database record.
-
-Uploads a sample image to MinIO.
-
-Triggers the Celery task which orchestrates ONNX classification and PyTorch GradCAM.
-
-Uploads the resulting heatmap to MinIO and updates the PostgreSQL record to ProcessingStatus.COMPLETED.
+7. Broken Images via Direct MinIO Paths (403 Forbidden)
+    Problem: &lt;img&gt; tags failed to render the original chest X-ray and Grad-CAM heatmap because the
+   backend returned raw MinIO bucket URLs (http://127.0.0.1:9000/med-vision-bucket/...) that lacked
+   public read access.
+    Resolution: Updated get_prediction in app/api/routes.py to intercept the response and call
+   storage_client.get_presigned_url(key) for both original_image_url_key and
+   heatmap_image_url_key, yielding valid, time-limited presigned GET URLs for browser rendering.
