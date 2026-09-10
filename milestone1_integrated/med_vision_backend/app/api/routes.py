@@ -1,0 +1,62 @@
+import uuid, json, asyncio
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from sse_starlette.sse import EventSourceResponse
+
+from app.db.session import get_db
+from app.db.models import PredictionRecord, User
+from app.api.deps import get_current_user
+from app.storage.client import storage_client
+from app.worker.tasks import process_prediction_job
+from app.api.schemas import PredictionCreateResponse, PredictionDetail, PredictionListResponse, PredictionListItem
+
+router = APIRouter()
+
+@router.get("/health")
+def health():
+    return {"status": "ok"}
+
+@router.post("/predictions", response_model=PredictionCreateResponse, status_code=202)
+def create_prediction(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if file.content_type not in ("image/png", "image/jpeg"):
+        raise HTTPException(400, "Only PNG/JPEG supported in v1")
+
+    record = PredictionRecord(
+        user_id=current_user.id,
+        original_filename=file.filename,
+        mime_type=file.content_type,
+        original_image_url="", original_image_url_key="",
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    key = f"uploads/{record.id}.png"
+    url = storage_client.upload_file(file.file, key, file.content_type)
+    record.original_image_url = url
+    record.original_image_url_key = key
+    db.commit()
+
+    process_prediction_job.delay(str(record.id))
+    return PredictionCreateResponse(id=record.id, status=record.status.value)
+
+@router.get("/predictions", response_model=PredictionListResponse)
+def list_predictions(
+    page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    query = db.query(PredictionRecord).filter(PredictionRecord.user_id == current_user.id).order_by(PredictionRecord.created_at.desc())
+    total = query.count()
+    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    return PredictionListResponse(items=[PredictionListItem.model_validate(r) for r in items], total=total, page=page, page_size=page_size)
+
+@router.get("/predictions/{prediction_id}", response_model=PredictionDetail)
+def get_prediction(prediction_id: uuid.UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    record = db.query(PredictionRecord).filter(PredictionRecord.id == prediction_id, PredictionRecord.user_id == current_user.id).first()
+    if not record:
+        raise HTTPException(404, "Not found")
+    return PredictionDetail.model_validate(record)

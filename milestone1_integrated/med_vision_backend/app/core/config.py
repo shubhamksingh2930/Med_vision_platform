@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     @property
     def s3_bucket_name(self) -> str: return self.R2_BUCKET_NAME
 
+    # Redis / Celery Parameters
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    @property
+    def redis_url(self) -> str:
+        return self.REDIS_URL
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
 settings = Settings()
