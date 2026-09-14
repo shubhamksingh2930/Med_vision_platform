@@ -1,12 +1,16 @@
 import uuid
 import json
 import asyncio
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+import redis
+from fastapi import APIRouter, Request, UploadFile, File, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 from jose import jwt, JWTError
 
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.db.session import get_db
 from app.db.models import PredictionRecord, User
 from app.api.deps import get_current_user
@@ -21,20 +25,58 @@ from app.api.schemas import (
 
 router = APIRouter()
 
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+
 
 @router.get("/health")
 def health():
     return {"status": "ok"}
 
 
+@router.get("/ready")
+def ready(db: Session = Depends(get_db)):
+    checks = {}
+
+    try:
+        db.execute(text("SELECT 1"))
+        checks["postgres"] = "ok"
+    except Exception as exc:
+        checks["postgres"] = f"error: {exc}"
+
+    try:
+        redis_client = redis.from_url(settings.redis_url, socket_connect_timeout=2)
+        redis_client.ping()
+        checks["redis"] = "ok"
+    except Exception as exc:
+        checks["redis"] = f"error: {exc}"
+
+    try:
+        storage_client.client.head_bucket(Bucket=storage_client.bucket)
+        checks["storage"] = "ok"
+    except Exception as exc:
+        checks["storage"] = f"error: {exc}"
+
+    failed = [name for name, result in checks.items() if result != "ok"]
+    if failed:
+        return JSONResponse(status_code=503, content={"status": "not ready", "checks": checks, "failed": failed})
+    return {"status": "ready", "checks": checks}
+
+
 @router.post("/predictions", response_model=PredictionCreateResponse, status_code=202)
+@limiter.limit("5/hour")
 def create_prediction(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if file.content_type not in ("image/png", "image/jpeg"):
         raise HTTPException(400, "Only PNG/JPEG supported in v1")
+
+    contents = file.file.read()
+    if len(contents) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(413, "File exceeds maximum allowed size of 10MB")
+    file.file.seek(0)
 
     record = PredictionRecord(
         user_id=current_user.id,

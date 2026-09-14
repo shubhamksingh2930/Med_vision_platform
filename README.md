@@ -66,7 +66,7 @@ Terminal 1: FastAPI Backend (med_vision_backend)
 uvicorn app.main:app --reload
 Terminal 2: Celery Worker (med_vision_backend)
 .\venv\Scripts\Activate.ps1
-celery -A app.worker.celery_app worker --loglevel=info --pool=solo
+celery -A app.worker.celery_app worker --loglevel=info --pool=threads --concurrency=3
 Terminal 3: React Frontend (med_vision_backend/frontend)
 Set-Location frontend
 npm run dev

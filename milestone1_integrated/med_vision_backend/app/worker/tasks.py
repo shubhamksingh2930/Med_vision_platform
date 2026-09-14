@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import os
 import tempfile
 from urllib.parse import urlparse
@@ -10,6 +11,8 @@ from app.services.inference import inference_service
 from app.services.gradcam import gradcam_service
 from app.services.persistence import persistence_service
 from app.storage.client import storage_client
+
+logger = logging.getLogger(__name__)
 
 def _extract_s3_key(url_or_key: str) -> str:
     if url_or_key.startswith("http://") or url_or_key.startswith("https://"):
@@ -26,6 +29,10 @@ def process_prediction_job(self, record_id: str):
         record = db.query(PredictionRecord).filter(PredictionRecord.id == record_id).first()
         if not record:
             raise ValueError(f"No record found for id={record_id}")
+
+        if record.status == ProcessingStatus.completed:
+            logger.info(f"Prediction {record_id} already completed, skipping reprocessing")
+            return
 
         # pending -> processing
         record.status = ProcessingStatus.processing

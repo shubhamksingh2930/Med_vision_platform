@@ -1,4 +1,5 @@
 import io
+import threading
 import numpy as np
 import torch
 import torchxrayvision as xrv
@@ -13,12 +14,14 @@ class GradCAMService:
         self.model.eval()
         target_layers = [self.model.features[-1]]
         self.cam = GradCAM(model=self.model, target_layers=target_layers)
+        self._lock = threading.Lock()
 
     def generate_heatmap(self, image_path: str, target_pathology_index: int) -> bytes:
         img = load_and_preprocess(image_path)
         tensor = torch.from_numpy(img[None, ...])
 
-        grayscale_cam = self.cam(input_tensor=tensor, targets=None)[0]
+        with self._lock:
+            grayscale_cam = self.cam(input_tensor=tensor, targets=None)[0]
 
         base = img[0]
         base_norm = (base - base.min()) / (base.max() - base.min() + 1e-8)
