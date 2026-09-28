@@ -44,12 +44,12 @@ export default function UploadDashboard({ onCompleted }) {
         onDragOver={(e) => e.preventDefault()}
         onClick={() => document.getElementById("fileInput").click()}
         style={{
-          border: "2px dashed #888",
+          border: "2px dashed var(--border-strong, #333333)",
           borderRadius: 8,
           padding: 36,
           textAlign: "center",
           cursor: "pointer",
-          backgroundColor: "#fafafa",
+          backgroundColor: "var(--bg-raised, #161616)",
         }}
       >
         <input
@@ -59,13 +59,13 @@ export default function UploadDashboard({ onCompleted }) {
           hidden
           onChange={(e) => handleFile(e.target.files[0])}
         />
-        <p style={{ margin: 0, fontWeight: "bold" }}>
+        <p style={{ margin: 0, fontWeight: "bold", color: "var(--text-secondary, #888888)" }}>
           Drop chest X-ray here (PNG / JPEG), or click to upload
         </p>
-        <p style={{ margin: "8px 0 0", color: "#555" }}>Status: {status}</p>
+        <p style={{ margin: "8px 0 0", color: "var(--text-muted, #444444)" }}>Status: {status}</p>
       </div>
       {errorMessage && (
-        <p style={{ color: "red", marginTop: 8 }}>{errorMessage}</p>
+        <p style={{ color: "var(--danger, #f87171)", marginTop: 8 }}>{errorMessage}</p>
       )}
     </div>
   );
