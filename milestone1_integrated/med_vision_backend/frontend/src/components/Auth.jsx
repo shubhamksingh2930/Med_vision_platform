@@ -3,7 +3,7 @@ import { loginUser, registerUser } from "../api";
 
 export default function Auth({ onLoginSuccess, onBack }) {
   const [isRegister, setIsRegister] = useState(false);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
 
@@ -12,9 +12,9 @@ export default function Auth({ onLoginSuccess, onBack }) {
     setError(null);
     try {
       if (isRegister) {
-        await registerUser(email, password);
+        await registerUser(username, password);
       }
-      const data = await loginUser(email, password);
+      const data = await loginUser(username, password);
       localStorage.setItem("medvision_token", data.access_token);
       onLoginSuccess();
     } catch (err) {
@@ -71,7 +71,7 @@ export default function Auth({ onLoginSuccess, onBack }) {
           </a>
         )}
         <h3 style={{ color: "var(--text-primary, #f0f0ee)" }}>
-          {isRegister ? "Create Account" : "Sign In to MedVision"}
+          {isRegister ? "Create account" : "Sign in"}
         </h3>
         {error && (
           <p style={{ color: "var(--danger, #f87171)" }}>{error}</p>
@@ -80,24 +80,38 @@ export default function Auth({ onLoginSuccess, onBack }) {
           onSubmit={handleSubmit}
           style={{ display: "flex", flexDirection: "column", gap: 12 }}
         >
-          <input
-            className="auth-input"
-            type="email"
-            placeholder="Email address"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={inputStyle}
-          />
-          <input
-            className="auth-input"
-            type="password"
-            placeholder="Password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
-          />
+          <div>
+            <input
+              className="auth-input"
+              type="text"
+              placeholder="Username"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              style={inputStyle}
+            />
+            {isRegister && (
+              <p style={{fontSize:'11px', color:'var(--text-muted,#444)', marginTop:'4px', marginBottom:'0'}}>
+                3+ characters. Letters, numbers, hyphens, underscores only.
+              </p>
+            )}
+          </div>
+          <div>
+            <input
+              className="auth-input"
+              type="password"
+              placeholder="Password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={inputStyle}
+            />
+            {isRegister && (
+              <p style={{fontSize:'11px', color:'var(--text-muted,#444)', marginTop:'4px', marginBottom:'0'}}>
+                8+ characters. Cannot be numbers only.
+              </p>
+            )}
+          </div>
           <button
             type="submit"
             style={{

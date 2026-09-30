@@ -65,7 +65,8 @@ def process_prediction_job(self, record_id: str):
         persistence_service.save_result(db, record_id, result)
 
     except Exception as exc:
-        persistence_service.mark_failed(db, record_id, str(exc))
+        if self.request.retries >= self.max_retries:
+            persistence_service.mark_failed(db, record_id, str(exc))
         raise self.retry(exc=exc)
     finally:
         if local_path and os.path.exists(local_path):

@@ -64,6 +64,16 @@ export default function UploadDashboard({ onCompleted }) {
         </p>
         <p style={{ margin: "8px 0 0", color: "var(--text-muted, #444444)" }}>Status: {status}</p>
       </div>
+      <p style={{
+        fontSize: '11px',
+        color: 'var(--text-muted, #444444)',
+        marginTop: '8px',
+        textAlign: 'center',
+        lineHeight: '1.5'
+      }}>
+        Any image produces output. Results are not clinically valid —
+        for learning and demonstration only.
+      </p>
       {errorMessage && (
         <p style={{ color: "var(--danger, #f87171)", marginTop: 8 }}>{errorMessage}</p>
       )}

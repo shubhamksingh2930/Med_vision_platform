@@ -1,14 +1,13 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, ConfigDict
 import uuid
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 class UserOut(BaseModel):
     id: uuid.UUID
-    email: EmailStr
-
+    username: str
     model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):

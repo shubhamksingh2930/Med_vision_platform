@@ -14,9 +14,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export const loginUser = async (email, password) => {
+export const loginUser = async (username, password) => {
   const params = new URLSearchParams();
-  params.append("username", email);
+  params.append("username", username);
   params.append("password", password);
   const response = await api.post("/auth/login", params, {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -24,8 +24,8 @@ export const loginUser = async (email, password) => {
   return response.data;
 };
 
-export const registerUser = async (email, password) => {
-  const response = await api.post("/auth/register", { email, password });
+export const registerUser = async (username, password) => {
+  const response = await api.post("/auth/register", { username, password });
   return response.data;
 };
 
