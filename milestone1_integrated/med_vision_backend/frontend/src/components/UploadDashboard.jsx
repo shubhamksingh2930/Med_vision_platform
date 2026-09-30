@@ -27,7 +27,13 @@ export default function UploadDashboard({ onCompleted }) {
       });
     } catch (err) {
       setStatus("idle");
-      setErrorMessage(err.response?.data?.detail || "Upload failed");
+      if (err.response?.status === 429) {
+        setErrorMessage(
+          "Upload limit reached (5/hour). Resets at the top of the next hour."
+        );
+      } else {
+        setErrorMessage(err.response?.data?.detail || "Upload failed");
+      }
     }
   };
 
@@ -39,6 +45,14 @@ export default function UploadDashboard({ onCompleted }) {
 
   return (
     <div>
+      <p style={{
+        fontSize: '11px',
+        color: 'var(--text-muted, #444444)',
+        marginBottom: '8px',
+        textAlign: 'center'
+      }}>
+        5 uploads per hour — resets on the hour
+      </p>
       <div
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
@@ -71,8 +85,8 @@ export default function UploadDashboard({ onCompleted }) {
         textAlign: 'center',
         lineHeight: '1.5'
       }}>
-        Any image produces output. Results are not clinically valid —
-        for learning and demonstration only.
+        Any image produces output — results are not clinically valid.
+        5 uploads/hour limit applies.
       </p>
       {errorMessage && (
         <p style={{ color: "var(--danger, #f87171)", marginTop: 8 }}>{errorMessage}</p>
